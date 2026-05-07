@@ -153,15 +153,58 @@ Important implementation files:
 
 The frontend client files under `frontend/src/client/` were updated to include the new `role` field and metrics service.
 
+## Screenshots
+
+Admin user management view with seeded `admin`, `manager`, and `member` users:
+
+![Admin user management](screenshots/Screenshot%202026-05-07%20at%2019.38.57.png)
+
+Backend OpenAPI docs showing the protected user endpoints:
+
+![Backend API docs](screenshots/Screenshot%202026-05-07%20at%2019.39.17.png)
+
+Adminer database view showing the application tables:
+
+![Adminer database view](screenshots/Screenshot%202026-05-07%20at%2019.39.36.png)
+
 ## Infrastructure Task: Ghost on Hetzner
 
-The infrastructure deliverable is in:
+The infrastructure deliverable is available in both `GHOST.md` and `infra/ghost/`. It provides a one-click script to deploy Ghost to a Hetzner Cloud VPS without public SSH access. The server is provisioned with cloud-init, runs Ghost and MySQL with Docker Compose, and exposes Ghost only through an outbound Cloudflare Tunnel.
 
-```text
-infra/ghost/
+### Ghost Architecture
+
+- Hetzner Cloud VPS running Ubuntu.
+- Hetzner Cloud Firewall attached with no inbound allow rules.
+- SSH disabled during cloud-init bootstrap.
+- Docker Compose stack:
+  - `ghost:5-alpine`
+  - `mysql:8.4`
+  - `cloudflare/cloudflared`
+- Cloudflare Tunnel routes the public hostname to `http://ghost:2368`.
+
+### Ghost Prerequisites
+
+Install the Hetzner Cloud CLI:
+
+```bash
+brew install hcloud
 ```
 
-It includes a one-click script that provisions Ghost on a Hetzner Cloud VPS with no public SSH access:
+Create:
+
+- A Hetzner Cloud API token with read/write access.
+- A Cloudflare Tunnel token from Cloudflare Zero Trust.
+- A Cloudflare public hostname for the tunnel. Configure it to point to:
+
+```text
+http://ghost:2368
+```
+
+The `ghost` hostname works because `cloudflared` and `ghost` run in the same Docker Compose network on the VPS.
+
+### Ghost Deploy
+
+From the repository root:
 
 ```bash
 export HCLOUD_TOKEN="your-hetzner-token"
@@ -171,7 +214,60 @@ export GHOST_HOSTNAME="blog.example.com"
 ./infra/ghost/deploy-ghost-hetzner.sh
 ```
 
-The script uses cloud-init, Docker Compose, MySQL, Ghost, and Cloudflare Tunnel. The Hetzner firewall has no inbound allow rules, SSH is disabled, and Ghost is reachable only through the tunnel. See `infra/ghost/README.md` for details.
+Optional overrides:
+
+```bash
+export SERVER_NAME="ghost-blog"
+export HCLOUD_LOCATION="fsn1"
+export HCLOUD_SERVER_TYPE="cax11"
+export HCLOUD_IMAGE="ubuntu-24.04"
+export FIREWALL_NAME="ghost-tunnel-only"
+```
+
+Bootstrap usually takes 3-5 minutes after Hetzner creates the server. Then open:
+
+```text
+https://blog.example.com/ghost
+```
+
+Ghost will show the first-run admin setup screen.
+
+### Ghost Security Model
+
+Public SSH is intentionally unavailable:
+
+- The Hetzner firewall has no inbound allow rules.
+- `ssh`/`sshd` is disabled by cloud-init.
+- Ghost is not published on a public port.
+- Cloudflare Tunnel is the only public path to the application.
+
+For emergency diagnostics, use the Hetzner web console. On the machine, the stack lives in:
+
+```text
+/opt/ghost
+```
+
+The bootstrap marker is written to:
+
+```text
+/var/log/ghost-bootstrap.log
+```
+
+### Ghost Cleanup
+
+Delete the server:
+
+```bash
+hcloud server delete ghost-blog
+```
+
+Delete the firewall if it is no longer used:
+
+```bash
+hcloud firewall delete ghost-tunnel-only
+```
+
+Remove or disable the Cloudflare Tunnel/public hostname in Cloudflare Zero Trust.
 
 ## Scope Notes
 
